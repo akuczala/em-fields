@@ -79,6 +79,21 @@ class Clif:
                 )) for i, rank_bases in enumerate(clif_basis) 
             }.items()
         ))
+    def get_vector(self):
+        return np.array([self.get_component([i]) for i in range(4)])
+
+    def get_grade(self, k):
+        return sum(self.get_component(indices)*e[indices] for indices in clif_basis[k])
+    def wedge(self, other):
+        return sum(
+            self.get_grade(k)._wedge_homogeneous(other.get_grade(l),k,l)
+            for k,l in itertools.product(range(top_grade+1),range(top_grade+1))
+        )
+    def _wedge_homogeneous(self, other, self_grade, other_grade):
+        if self_grade + other_grade > top_grade:
+            return Clif(0)
+        else:
+            return (self*other).get_grade(self_grade + other_grade)
 
 #use singledispatch to support operators with python / numpy numerical types
 #would use singledispatchmethod but this is only supported in python 3.8+
@@ -209,7 +224,7 @@ def get_basis(indices):
     if indices == 'I':
         return I # = reverse
     elif len(indices) == 0:
-        return 1
+        return Clif(1)
     elif len(indices) == 1:
         return gammas[indices[0]]
     elif len(indices) == 2:
@@ -229,9 +244,6 @@ def flatten_nested_dict(dct):
 
 def from_components(components):
     return sum(coeff*get_basis(indices) for indices, coeff in components.items())
-
-def get_vector(A):
-    return np.array([get_component(A,[i]) for i in range(4)])
 
 def twoform_to_clif(F):
     return sum(F[i,j]*sigmas[i,j] for i,j in itertools.combinations(range(4),2))
@@ -264,7 +276,7 @@ def decompose_bivec_blade(b):
     try:
         assert wedge_vec(v1,v2).isclose(b)
     except AssertionError:
-        raise ValueError('Input is not a blade')
+        raise ValueError(f'{b} is not a blade')
     return (v1, v2)
 
 # def blade_exp(blade):
@@ -290,7 +302,8 @@ def boost(M, B, angle):
     R = R0 + R2; R_rev = R0 - R2
     return R*M*R_rev
 
-clif_basis = [[c for c in itertools.combinations(range(4),m)] for m in range(5)]
+top_grade = 4
+clif_basis = [[c for c in itertools.combinations(range(4),m)] for m in range(top_grade+1)]
 e = from_components({c: 1.0 for c in itertools.chain.from_iterable(clif_basis)})
 
 for i in range(4):
