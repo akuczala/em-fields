@@ -180,7 +180,6 @@ def _(x: Clif, y: Clif):
 
 @singledispatch
 def _rev_div(x, y):
-    prinyt('waw')
     return TypeError(f'{type(y)}/{type(x)} not supported')
 @_rev_div.register
 def _(x: Number, y: Clif):
@@ -260,24 +259,30 @@ def bivec_get_ortho(B):
     B2 = np.sqrt(r)*np.sin(th/2)*I*Bhat
     return B1, B2
 
-def decompose_bivec_blade(b):
+def decompose_bivec_blade(b, v0 = None):
     if b.isclose(0).all():
         return (0.,0.)
-    v1 = None
-    for i in range(4)[::-1]: #tends to make smaller index appear first in output
-        dot_comps = (gammas[i]*b).get_graded_components()
-        if 1 in dot_comps and len(dot_comps) > 0:
-            v1 = gammas[i]
-            break
-    if v1 is None:
-        raise Exception('wat')
-    v1 = -(v1*b - b*v1)/2 #
-    v2 = (v1*b)/(v1*v1).scalar_part()
+    
+    if v0 is None:
+        for i in range(4): #tends to make smaller index appear first in output
+            dot_comps = (gammas[i]*b).get_graded_components()
+            if 1 in dot_comps and len(dot_comps) > 0:
+                v0 = gammas[i]
+                break
+        if v0 is None:
+            raise ValueError(f'{b} might not be a blade')
+    
+    v1 = (v0*b - b*v0)/2 #
+    v2 = -(v1*b)/(v1*v1).scalar_part()
     try:
-        assert wedge_vec(v1,v2).isclose(b)
+        assert wedge_vec(v2,v1).isclose(b)
     except AssertionError:
         raise ValueError(f'{b} is not a blade')
-    return (v1, v2)
+    try:
+        assert np.isclose((v1*v2).scalar_part(),0)
+    except AssertionError:
+        raise ValueError(f'Resulting vectors {v1}, {v2} not perpendicular')
+    return (v2, v1)
 
 # def blade_exp(blade):
 #     bsq_0 = scalar_part(np.dot(blade,blade))
