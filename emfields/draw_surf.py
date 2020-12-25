@@ -25,26 +25,49 @@ def ivp_dx(t,x, *args):
 
 def calc_closed_curve(
         x0, F_fun, project_out,
-        res = 0.1, max_s= 10, solver_kwargs = dict(atol = 1e-8, rtol = 1e-4)
+        n_pts = 20, res=None, max_s= 10, frac_curve = 1,
+        solver_kwargs = dict(atol = 1e-8, rtol = 1e-4)
     ):
-    s_range = np.arange(0,max_s,res)
-    s_span = (s_range.min(),s_range.max())
+    if n_pts is None and res is None:
+        raise Exception('Either n_pts or res must not equal None')
+
+    s_span = (0,max_s)
     init_tangent = ivp_dx(0,x0,F_fun,project_out)
     orbit_dir = lambda t, y, *args: np.dot(y-x0,init_tangent) + 1e-16 #to exclude event at t=0
     orbit_dir.direction = 1
     orbit_dir.terminal = True
-    sol = solve_ivp(
+    if res is None:
+        sol = solve_ivp(
+            ivp_dx,
+            t_span = s_span,
+            y0=x0, args=(F_fun,project_out),
+            events = orbit_dir,
+            **solver_kwargs
+        )
+        if not sol.success:
+            raise Exception(f'Could not find solution starting at {x0}')
+        if len(sol.t_events) == 0:
+            raise Exception(f'Could not find closed orbit starting at {x0}')
+        
+        s_end = sol.t_events[0][0]*frac_curve
+        s_range = np.linspace(0,s_end,n_pts)
+        events = None
+    else:
+        s_end = max_s
+        events = orbit_dir
+        s_range = np.arange(0,s_end,res)
+    
+    sol = sol = solve_ivp(
         ivp_dx,
         t_span = s_span,
-        t_eval=s_range,
+        t_eval = s_range,
+        events = events,
         y0=x0, args=(F_fun,project_out),
-        events = orbit_dir,
         **solver_kwargs
     )
-    if len(sol.t_events) == 0:
-        print(f'Could not find closed orbit starting at {x0}')
     if not sol.success:
         raise Exception(f'Could not find solution starting at {x0}')
+
     x_sol = sol.y
     return x_sol.T
 
@@ -52,16 +75,16 @@ def calc_surface(x0, F_fun, project_outs, **kwargs):
     init_curve = calc_closed_curve(x0, F_fun, project_outs[0], **kwargs)
     perp_curve = calc_closed_curve(x0, F_fun, project_outs[1], **kwargs)
     curves = [init_curve]
-    for x in perp_curve[:5]:
+    for x in np.concatenate([perp_curve[-3:],perp_curve[:5]],axis=0): #debug
         curves.append(calc_closed_curve(x, F_fun, project_outs[0], **kwargs))
     return curves
 
-def draw_closed_curve(x_sol, to_3d_pos, bm = None, return_geom = False, remove_doubles=True):
+def draw_curve(x_sol, to_3d_pos, bm = None, closed=True, return_geom = False, remove_doubles=True):
     if bm is None:
         bm = bmesh.new()
     verts = [bm.verts.new(to_3d_pos(p)) for p in x_sol]
     edges = []
-    viter = zip(verts,verts[1:]+ [verts[0]])
+    viter = zip(verts,verts[1:]+ [verts[0]]) if closed else zip(verts,verts[1:])
     for v1, v2 in viter:
         edges += bmesh.ops.contextual_create(bm, geom=[v1, v2])['edges']
 
@@ -75,9 +98,9 @@ def draw_closed_curve(x_sol, to_3d_pos, bm = None, return_geom = False, remove_d
 def draw_surface(curves, to_3d_pos, bm = None):
     if bm is None:
         bm = bmesh.new()
-    curve_geoms = [draw_closed_curve(curve, to_3d_pos, bm, return_geom=True, remove_doubles=False) for curve in curves]
+    curve_geoms = [draw_curve(curve, to_3d_pos, bm, return_geom=True, remove_doubles=False) for curve in curves]
     curve_edges = [g['edges'] for g in curve_geoms]
-    for edges1, edges2 in zip(curve_edges,curve_edges[1:-1]):
+    for edges1, edges2 in zip(curve_edges,curve_edges[1:]):
         for edge1, edge2 in zip(edges1, edges2):
             bmesh.ops.contextual_create(bm, geom=[edge1,edge2])
     return bm
