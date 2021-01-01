@@ -7,6 +7,53 @@ from emfields.em_fields import mnorm, mdot
 
 import bmesh 
 
+def draw_bivec(B,x,to_3d_pos,bm=None, **kwargs):
+    if bm is None:
+        bm = bmesh.new()
+
+    #print(B._arr)
+    if np.isnan(B._arr).any():
+        return bm
+
+    b1, b2 = clif.bivec_get_ortho(B)
+    #print(b1)
+    #print(b2)
+    bm = draw_bivec_blade(b1, x, to_3d_pos, bm=bm, **kwargs)
+    bm = draw_bivec_blade(b2, x, to_3d_pos, bm=bm, **kwargs)
+
+    return bm
+
+def draw_bivec_blade(B,x,to_3d_pos, bm=None, scale=1., center = True):
+    if bm is None:
+        bm = bmesh.new()
+
+    if B.isclose(0):
+        return bm
+
+    v1, v2 = clif.decompose_bivec_blade(B)
+    v1, v2 = (v.get_vector() for v in (v1,v2))
+    normed_vecs=  [scale*v/np.sqrt(np.abs(mdot(v,v))) for v in (v1,v2)]
+
+    if mdot(normed_vecs[0],normed_vecs[0]) < 0:
+        timelike = normed_vecs[0]
+        spacelike = normed_vecs[1]
+    else:
+        timelike = normed_vecs[1]
+        spacelike = normed_vecs[0]
+
+    spacelike = spacelike * np.sign(timelike[0])
+    timelike = timelike * np.sign(timelike[0])
+
+    #print(mdot(timelike,timelike),mdot(spacelike,spacelike))
+    bivec_points = np.array([np.zeros_like(timelike), timelike, timelike + spacelike, spacelike])
+    origin_point = x - np.mean(bivec_points,axis=0) if center else x
+
+    bivec_verts = [bm.verts.new(to_3d_pos(p + origin_point)) for p in bivec_points]
+
+    bmesh.ops.contextual_create(bm, geom=bivec_verts)
+
+    return bm
+
 def get_norm(F):
     return (F*F).scalar_part()
 def get_form_path_tangent(x, F_fun, project_out):
@@ -49,7 +96,12 @@ def calc_closed_curve(
         if len(sol.t_events) == 0:
             raise Exception(f'Could not find closed orbit starting at {x0}')
         
-        s_end = sol.t_events[0][0]*frac_curve
+        #don't know what to make of this case
+        if len(sol.t_events[0]) == 0:
+            s_end = max_s
+        else:
+            s_end = sol.t_events[0][0]*frac_curve
+
         s_range = np.linspace(0,s_end,n_pts)
         events = None
     else:

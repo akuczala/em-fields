@@ -248,6 +248,8 @@ def twoform_to_clif(F):
     return sum(F[i,j]*sigmas[i,j] for i,j in itertools.combinations(range(4),2))
 
 def bivec_get_ortho(B):
+    if B.isclose(0):
+        raise Exception('Got 0')
     Bsq = B*B
     Bsq0 = Bsq.scalar_part()
     BsqI = Bsq.get_component('I')
