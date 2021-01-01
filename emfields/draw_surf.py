@@ -12,12 +12,11 @@ def draw_bivec(B,x,to_3d_pos,bm=None, **kwargs):
         bm = bmesh.new()
 
     #print(B._arr)
-    if np.isnan(B._arr).any():
+    if np.isnan(B._arr).any() or B.isclose(0):
         return bm
 
     b1, b2 = clif.bivec_get_ortho(B)
-    #print(b1)
-    #print(b2)
+
     bm = draw_bivec_blade(b1, x, to_3d_pos, bm=bm, **kwargs)
     bm = draw_bivec_blade(b2, x, to_3d_pos, bm=bm, **kwargs)
 
@@ -32,20 +31,35 @@ def draw_bivec_blade(B,x,to_3d_pos, bm=None, scale=1., center = True):
 
     v1, v2 = clif.decompose_bivec_blade(B)
     v1, v2 = (v.get_vector() for v in (v1,v2))
-    normed_vecs=  [scale*v/np.sqrt(np.abs(mdot(v,v))) for v in (v1,v2)]
 
-    if mdot(normed_vecs[0],normed_vecs[0]) < 0:
-        timelike = normed_vecs[0]
-        spacelike = normed_vecs[1]
-    else:
-        timelike = normed_vecs[1]
-        spacelike = normed_vecs[0]
+    euclid_normed_vecs =  [v/lin.norm(v) for v in (v1,v2)]
 
-    spacelike = spacelike * np.sign(timelike[0])
-    timelike = timelike * np.sign(timelike[0])
+    # take a sqrt here so that isclose uses the correct magnitude
+    mdots = [(lambda vdot: np.sqrt(np.abs(vdot))*np.sign(vdot))(mdot(v,v)) for v in (v1, v2)]
+    mdot_signs = tuple(0 if np.isclose(v_sq,0) else int(np.sign(v_sq)) for v_sq in mdots)
 
-    #print(mdot(timelike,timelike),mdot(spacelike,spacelike))
-    bivec_points = np.array([np.zeros_like(timelike), timelike, timelike + spacelike, spacelike])
+    #abs_mnorm = lambda v: v/np.sqrt(np.abs(mdot(v,v)))
+    abs_mnorm = lambda v : v #don't do minkowski normalization: we can get some absurdly large numbers
+    space_time_vecs = lambda timelike, spacelike: [abs_mnorm(v)*np.sign(timelike[0]) for v in (timelike, spacelike)]
+    null_space_vecs = lambda null, spacelike: [null*np.sign(null[0]), abs_mnorm(spacelike)*np.sign(null[0])]
+    null_time_vecs = lambda null, timelike: [null*np.sign(timelike[0]), abs_mnorm(timelike)*np.sign(timelike[0])]
+
+    sign_map = {
+        (-1,-1): space_time_vecs(euclid_normed_vecs[0],euclid_normed_vecs[1]),
+        (1,1): space_time_vecs(euclid_normed_vecs[0],euclid_normed_vecs[1]),
+        (-1,1): space_time_vecs(euclid_normed_vecs[0],euclid_normed_vecs[1]),
+        (1,-1): space_time_vecs(euclid_normed_vecs[1],euclid_normed_vecs[0]),
+        (0, 1): null_space_vecs(euclid_normed_vecs[0],euclid_normed_vecs[1]),
+        (1, 0): null_space_vecs(euclid_normed_vecs[1],euclid_normed_vecs[0]),
+        (0,-1): null_time_vecs(euclid_normed_vecs[0],euclid_normed_vecs[1]),
+        (-1,0): null_time_vecs(euclid_normed_vecs[1],euclid_normed_vecs[0])
+    } 
+    try:
+        v1, v2 = sign_map[mdot_signs]
+    except:
+        raise ValueError(f'Got two null vectors? Got signs {mdot_signs} ')
+
+    bivec_points = scale*np.array([np.zeros_like(v1), v1, v1 + v2, v2])
     origin_point = x - np.mean(bivec_points,axis=0) if center else x
 
     bivec_verts = [bm.verts.new(to_3d_pos(p + origin_point)) for p in bivec_points]

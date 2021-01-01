@@ -71,7 +71,7 @@ class Clif:
             lambda kv: len(kv[1])>0,
             {
                 i: dict(filter(
-                    lambda kv: return_zero or not np.isclose(kv[1],0),
+                    lambda kv: return_zero or not kv[1] == 0,
                     {
                         indices: self.get_component(indices) for indices in rank_bases
 
@@ -251,6 +251,8 @@ def bivec_get_ortho(B):
     if B.isclose(0):
         raise Exception('Got 0')
     Bsq = B*B
+    if Bsq.isclose(0): #null bivectors are orthogonal to themselves
+        return B, Clif(0.)
     Bsq0 = Bsq.scalar_part()
     BsqI = Bsq.get_component('I')
     r = np.abs(Bsq0 + 1j*BsqI)
@@ -259,11 +261,12 @@ def bivec_get_ortho(B):
     Bhat = (np.cos(-th/2) + np.sin(-th/2)*I)*B/np.sqrt(r)
     B1 = np.sqrt(r)*np.cos(th/2)*Bhat
     B2 = np.sqrt(r)*np.sin(th/2)*I*Bhat
+
     return B1, B2
 
 def decompose_bivec_blade(b, v0 = None):
     if b.isclose(0).all():
-        return (0.,0.)
+        raise Exception(f'Input is zero')
     
     if v0 is None:
         for i in range(4): #tends to make smaller index appear first in output
