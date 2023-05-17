@@ -6,6 +6,14 @@ from emfields.clifford import e, Clif
 
 from emfields.em_fields import *
 
+def calc_A_point(q,x,r,u,a, exclude_radius=0.1):
+    R = x - r
+    if exclude_radius is not None and enorm(R) < exclude_radius:
+        print('exclude')
+        return np.full([4],np.nan)
+    const = q/(4*np.pi)
+    p = mdot(u,R)
+    return const*u/p
 def calc_F_point(q,x,r,u,a, exclude_radius=0.1):
     R = x - r
     if exclude_radius is not None and enorm(R) < exclude_radius:
@@ -38,6 +46,12 @@ def calc_F_point_radiation_only(q,x,r,u,a, exclude_radius=0.1):
     term2 = (outerprod(R,a)-outerprod(u,u))/p**2
     F = const*antisym2(term1 + term2)
     return F
+
+def calc_A_traj(q,x,r_tau,u_tau,a_tau,tau_r,A_point_fn=calc_A_point,fkwargs={}, **kwargs):
+    tau = tau_r(x,**fkwargs)
+    if np.isnan(tau):
+        return np.zeros([4])
+    return A_point_fn(q,x,r_tau(tau,**fkwargs),u_tau(tau,**fkwargs),a_tau(tau,**fkwargs), **kwargs)
 
 def calc_F_traj(q,x,r_tau,u_tau,a_tau,tau_r,F_point_fn=calc_F_point,fkwargs={}, **kwargs):
     tau = tau_r(x,**fkwargs)

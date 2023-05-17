@@ -7,7 +7,25 @@ from emfields.em_fields import mnorm, mdot
 
 import bmesh 
 
-def draw_bivec(B,x,to_3d_pos,bm=None, **kwargs):
+def draw_vec(v: np.ndarray, x: np.ndarray, to_3d_pos, bm=None, scale_fun = lambda v: 1., normalize = True, center = True):
+    if bm is None:
+        bm = bmesh.new()
+
+    if np.isnan(v).any():
+        return bm
+
+    if normalize and not np.isclose(v,0).all():
+        v = v/lin.norm(v)
+
+    vec_points = scale_fun(v)*np.array([np.zeros_like(v), v])
+    origin_point = x - np.mean(vec_points,axis=0) if center else x
+    vec_verts = [bm.verts.new(to_3d_pos(p + origin_point)) for p in vec_points]
+
+    bmesh.ops.contextual_create(bm, geom=vec_verts)
+
+    return bm
+
+def draw_bivec(B: clif.Clif,x: np.ndarray, to_3d_pos, bm=None, **kwargs):
     if bm is None:
         bm = bmesh.new()
 
@@ -22,7 +40,7 @@ def draw_bivec(B,x,to_3d_pos,bm=None, **kwargs):
 
     return bm
 
-def draw_bivec_blade(B,x,to_3d_pos, bm=None, scale=1., center = True):
+def draw_bivec_blade(B: clif.Clif, x, to_3d_pos, bm=None, scale_fun = lambda B: 1., center = True):
     if bm is None:
         bm = bmesh.new()
 
@@ -37,7 +55,6 @@ def draw_bivec_blade(B,x,to_3d_pos, bm=None, scale=1., center = True):
     # take a sqrt here so that isclose uses the correct magnitude
     mdots = [(lambda vdot: np.sqrt(np.abs(vdot))*np.sign(vdot))(mdot(v,v)) for v in (v1, v2)]
     mdot_signs = tuple(0 if np.isclose(v_sq,0) else int(np.sign(v_sq)) for v_sq in mdots)
-
     #abs_mnorm = lambda v: v/np.sqrt(np.abs(mdot(v,v)))
     abs_mnorm = lambda v : v #don't do minkowski normalization: we can get some absurdly large numbers
     space_time_vecs = lambda timelike, spacelike: [abs_mnorm(v)*np.sign(timelike[0]) for v in (timelike, spacelike)]
@@ -59,7 +76,7 @@ def draw_bivec_blade(B,x,to_3d_pos, bm=None, scale=1., center = True):
     except:
         raise ValueError(f'Got two null vectors? Got signs {mdot_signs} ')
 
-    bivec_points = scale*np.array([np.zeros_like(v1), v1, v1 + v2, v2])
+    bivec_points = scale_fun(B)*np.array([np.zeros_like(v1), v1, v1 + v2, v2])
     origin_point = x - np.mean(bivec_points,axis=0) if center else x
 
     bivec_verts = [bm.verts.new(to_3d_pos(p + origin_point)) for p in bivec_points]
@@ -68,8 +85,6 @@ def draw_bivec_blade(B,x,to_3d_pos, bm=None, scale=1., center = True):
 
     return bm
 
-def get_norm(F):
-    return (F*F).scalar_part()
 def get_form_path_tangent(x, F_fun, project_out):
     F = F_fun(x)
     if np.isnan(F).any():
@@ -81,6 +96,7 @@ def get_form_path_tangent(x, F_fun, project_out):
         return tangent
     #return 0.5*tangent/lin.norm(tangent)*(absFsq_min/np.abs(Fsq))**0.25
     return tangent/lin.norm(tangent)
+
 def ivp_dx(t,x, *args):
     return get_form_path_tangent(x, *args)
 
